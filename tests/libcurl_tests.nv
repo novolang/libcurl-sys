@@ -1,0 +1,250 @@
+// API tests for the libcurl bindings.
+//
+// Every test below calls into the C library, so the suite needs
+// libcurl installed and linked.  `novo pkg build` type-checks the
+// declarations without it; `novo test` runs them and does not.
+//
+// No test opens a network connection.  The suite asks libcurl about
+// itself, configures a handle and reads the configuration back, and
+// exercises the two calls that fail before any socket is opened.
+
+use std.test
+use libcurl
+
+// `CURLE_OK`.
+const OK: Int = 0
+
+// `CURLE_URL_MALFORMAT`, the answer to a transfer with no URL set.
+const URL_MALFORMAT: Int = 3
+
+// `CURLE_BAD_FUNCTION_ARGUMENT`, the answer to a call whose handle is
+// not in the state the call needs.
+const BAD_FUNCTION_ARGUMENT: Int = 43
+
+// `CURLE_UNKNOWN_OPTION`, the answer to an option this libcurl has
+// never heard of.
+const UNKNOWN_OPTION: Int = 48
+
+// `CURLE_UNSUPPORTED_PROTOCOL`, the answer to a raw socket call on a
+// handle that was never put into connect-only mode.
+const UNSUPPORTED_PROTOCOL: Int = 1
+
+// `CURLOPT_URL`, a string option.
+const OPT_URL: Int = 10002
+
+// `CURLOPT_TIMEOUT`, a `long` option, in seconds.
+const OPT_TIMEOUT: Int = 13
+
+// `CURLOPT_HTTPHEADER`, a pointer option taking a string list.
+const OPT_HTTPHEADER: Int = 10023
+
+// `CURLOPT_POSTFIELDSIZE_LARGE`, a `curl_off_t` option.
+const OPT_POSTFIELDSIZE_LARGE: Int = 30115
+
+// `CURLOPT_COOKIELIST`, a string option that feeds one line to the
+// cookie engine and starts the engine if it is not running.
+const OPT_COOKIELIST: Int = 10135
+
+// `CURLINFO_EFFECTIVE_URL`, a string item.
+const INFO_EFFECTIVE_URL: Int = 1048577
+
+// `CURLINFO_RESPONSE_CODE`, a `long` item.
+const INFO_RESPONSE_CODE: Int = 2097154
+
+// `CURLINFO_TOTAL_TIME_T`, a `curl_off_t` item, in microseconds.
+const INFO_TOTAL_TIME_T: Int = 6291506
+
+// `CURLINFO_COOKIELIST`, a pointer item answering a `curl_slist` the
+// caller releases.
+const INFO_COOKIELIST: Int = 4194332
+
+@test
+fn test_the_library_reports_its_own_version() [io, ffi]
+    test.case("curl_version")
+    let text = ptr.read_str(libcurl.curl_version())
+    test.assert(str.len(text) > 0)
+    test.assert(str.contains(text, "libcurl/"))
+
+@test
+fn test_a_result_code_has_a_description() [io, ffi]
+    test.case("curl_easy_strerror")
+    test.assert(ptr.read_str(libcurl.curl_easy_strerror(OK)) == "No error")
+    test.assert(str.len(ptr.read_str(libcurl.curl_easy_strerror(URL_MALFORMAT))) > 0)
+    // A code libcurl does not define still answers a string.
+    test.assert(str.len(ptr.read_str(libcurl.curl_easy_strerror(9999))) > 0)
+
+@test
+fn test_the_global_setup_runs_and_is_undone() [io, ffi]
+    test.case("curl_global_init and curl_global_cleanup")
+    // 3 is CURL_GLOBAL_ALL.  The call is idempotent: libcurl counts
+    // the initialisations and this one is matched below.
+    test.assert(libcurl.curl_global_init(3) == OK)
+    libcurl.curl_global_cleanup()
+
+@test
+fn test_an_easy_handle_is_created_copied_and_released() [io, ffi]
+    test.case("curl_easy_init, curl_easy_duphandle, curl_easy_reset, curl_easy_cleanup")
+    let handle = libcurl.curl_easy_init()
+    test.assert(handle != 0)
+    test.assert(libcurl.curl_easy_setopt_str(handle, OPT_URL, "https://example.com/") == OK)
+    let copy = libcurl.curl_easy_duphandle(handle)
+    test.assert(copy != 0)
+    test.assert(copy != handle)
+    // The copy carries the option; the reset original does not.
+    let slot = ptr.alloc_word()
+    test.assert(libcurl.curl_easy_getinfo_str(copy, INFO_EFFECTIVE_URL, slot) == OK)
+    test.assert(ptr.read_str(ptr.read_word(slot)) == "https://example.com/")
+    libcurl.curl_easy_reset(handle)
+    ptr.write_word(slot, 0)
+    test.assert(libcurl.curl_easy_getinfo_str(handle, INFO_EFFECTIVE_URL, slot) == OK)
+    test.assert(ptr.read_str(ptr.read_word(slot)) == "")
+    ptr.free(slot)
+    libcurl.curl_easy_cleanup(copy)
+    libcurl.curl_easy_cleanup(handle)
+
+@test
+fn test_each_kind_of_option_is_accepted_by_its_own_declaration() [io, ffi]
+    test.case("curl_easy_setopt_long, _str, _ptr and _off_t")
+    let handle = libcurl.curl_easy_init()
+    test.assert(libcurl.curl_easy_setopt_long(handle, OPT_TIMEOUT, 30) == OK)
+    test.assert(libcurl.curl_easy_setopt_str(handle, OPT_URL, "https://example.com/a") == OK)
+    // 4294967296 is larger than a 32-bit option could carry, which is
+    // what the `curl_off_t` family is for.
+    test.assert(libcurl.curl_easy_setopt_off_t(handle, OPT_POSTFIELDSIZE_LARGE, 4294967296) == OK)
+    let headers = libcurl.curl_slist_append(0, "Accept: application/json")
+    test.assert(headers != 0)
+    test.assert(libcurl.curl_easy_setopt_ptr(handle, OPT_HTTPHEADER, headers) == OK)
+    // Clearing a pointer option takes 0, and the list is then the
+    // caller's to release.
+    test.assert(libcurl.curl_easy_setopt_ptr(handle, OPT_HTTPHEADER, 0) == OK)
+    libcurl.curl_slist_free_all(headers)
+    libcurl.curl_easy_cleanup(handle)
+
+@test
+fn test_an_option_this_libcurl_does_not_have_is_refused() [io, ffi]
+    test.case("curl_easy_setopt_long with an option number that is not defined")
+    let handle = libcurl.curl_easy_init()
+    test.assert(libcurl.curl_easy_setopt_long(handle, 9998, 1) == UNKNOWN_OPTION)
+    libcurl.curl_easy_cleanup(handle)
+
+@test
+fn test_each_kind_of_information_reads_back_before_a_transfer() [io, ffi]
+    test.case("curl_easy_getinfo_str, _long and _off_t")
+    let handle = libcurl.curl_easy_init()
+    let _ = libcurl.curl_easy_setopt_str(handle, OPT_URL, "https://example.com/b")
+    let slot = ptr.alloc_word()
+    test.assert(libcurl.curl_easy_getinfo_str(handle, INFO_EFFECTIVE_URL, slot) == OK)
+    test.assert(ptr.read_str(ptr.read_word(slot)) == "https://example.com/b")
+    // No transfer has happened, so there is no status and no elapsed
+    // time, and both items answer zero rather than refusing.
+    ptr.write_word(slot, 0)
+    test.assert(libcurl.curl_easy_getinfo_long(handle, INFO_RESPONSE_CODE, slot) == OK)
+    test.assert(ptr.read_word(slot) == 0)
+    ptr.write_word(slot, 0)
+    test.assert(libcurl.curl_easy_getinfo_off_t(handle, INFO_TOTAL_TIME_T, slot) == OK)
+    test.assert(ptr.read_word(slot) == 0)
+    // An item number this libcurl does not define is refused.
+    test.assert(libcurl.curl_easy_getinfo_long(handle, 2097151, slot) == UNKNOWN_OPTION)
+    ptr.free(slot)
+    libcurl.curl_easy_cleanup(handle)
+
+@test
+fn test_a_pointer_item_answers_a_list_the_caller_releases() [io, ffi]
+    test.case("curl_easy_getinfo_ptr")
+    let handle = libcurl.curl_easy_init()
+    let slot = ptr.alloc_word()
+    // A handle whose cookie engine has never run holds no list, and the
+    // item answers success with a null address rather than refusing.
+    ptr.write_word(slot, 0)
+    test.assert(libcurl.curl_easy_getinfo_ptr(handle, INFO_COOKIELIST, slot) == OK)
+    test.assert(ptr.read_word(slot) == 0)
+    // One Set-Cookie line through `CURLOPT_COOKIELIST` starts the
+    // engine and puts a cookie in it.
+    test.assert(libcurl.curl_easy_setopt_str(handle, OPT_COOKIELIST,
+                "Set-Cookie: a=1; domain=example.com; path=/") == OK)
+    ptr.write_word(slot, 0)
+    test.assert(libcurl.curl_easy_getinfo_ptr(handle, INFO_COOKIELIST, slot) == OK)
+    let cookies = ptr.read_word(slot)
+    test.assert(cookies != 0)
+    // A `curl_slist` node begins with the address of its string, and
+    // the cookie is written in the Netscape cookie-file format.
+    test.assert(str.contains(ptr.read_str(ptr.read_word(cookies)), "example.com"))
+    // This is one of the items that hands the caller a list of its own,
+    // so the caller is the one that releases it.
+    libcurl.curl_slist_free_all(cookies)
+    // An information number this libcurl does not define is refused
+    // through this declaration too.
+    test.assert(libcurl.curl_easy_getinfo_ptr(handle, 4194303, slot) == UNKNOWN_OPTION)
+    ptr.free(slot)
+    libcurl.curl_easy_cleanup(handle)
+
+@test
+fn test_a_header_list_grows_and_is_released() [io, ffi]
+    test.case("curl_slist_append and curl_slist_free_all")
+    let first = libcurl.curl_slist_append(0, "X-One: 1")
+    test.assert(first != 0)
+    let second = libcurl.curl_slist_append(first, "X-Two: 2")
+    test.assert(second != 0)
+    // Appending answers the head of the list, which is the address the
+    // first call answered.
+    test.assert(second == first)
+    libcurl.curl_slist_free_all(second)
+
+@test
+fn test_a_string_is_escaped_and_unescaped_again() [io, ffi]
+    test.case("curl_easy_escape, curl_easy_unescape and curl_free")
+    let handle = libcurl.curl_easy_init()
+    let encoded = libcurl.curl_easy_escape(handle, "a b&c", 0)
+    test.assert(encoded != 0)
+    test.assert(ptr.read_str(encoded) == "a%20b%26c")
+    let len_slot = ptr.alloc_word()
+    let decoded = libcurl.curl_easy_unescape(handle, "a%20b%26c", 0, len_slot)
+    test.assert(decoded != 0)
+    test.assert(ptr.read_str(decoded) == "a b&c")
+    test.assert(ptr.read_word(len_slot) == 5)
+    libcurl.curl_free(decoded)
+    libcurl.curl_free(encoded)
+    ptr.free(len_slot)
+    libcurl.curl_easy_cleanup(handle)
+
+@test
+fn test_a_date_parses_and_a_non_date_answers_minus_one() [io, ffi]
+    test.case("curl_getdate")
+    // RFC 7231 section 7.1.1.1, the preferred HTTP date format.
+    test.assert(libcurl.curl_getdate("Sun, 06 Nov 1994 08:49:37 GMT", 0) == 784111777)
+    test.assert(libcurl.curl_getdate("Thu, 01 Jan 1970 00:00:00 GMT", 0) == 0)
+    // The answer is a C `time_t` here, but the refusal is the one
+    // value that must be read as a signed 32-bit number.
+    let refused = libcurl.curl_getdate("not a date at all", 0) as i32
+    test.assert(refused == -1)
+    libcurl.curl_easy_cleanup(0)
+
+@test
+fn test_a_transfer_with_no_url_fails_before_any_socket() [io, ffi]
+    test.case("curl_easy_perform on a handle with nothing configured")
+    let handle = libcurl.curl_easy_init()
+    let rc = libcurl.curl_easy_perform(handle)
+    test.assert(rc == URL_MALFORMAT)
+    test.assert(str.len(ptr.read_str(libcurl.curl_easy_strerror(rc))) > 0)
+    // Resuming a handle that has no transfer under it is refused with
+    // 43, `CURLE_BAD_FUNCTION_ARGUMENT`.
+    test.assert(libcurl.curl_easy_pause(handle, 0) == BAD_FUNCTION_ARGUMENT)
+    libcurl.curl_easy_cleanup(handle)
+
+@test
+fn test_the_connection_calls_answer_before_there_is_a_connection() [io, ffi]
+    test.case("curl_easy_upkeep, curl_easy_send and curl_easy_recv")
+    let handle = libcurl.curl_easy_init()
+    // A handle holding no connection has nothing to keep alive, and
+    // reports that as success rather than as an error.
+    test.assert(libcurl.curl_easy_upkeep(handle) == OK)
+    // The raw socket calls are only for a connection opened with 141,
+    // `CURLOPT_CONNECT_ONLY`.  Without one they answer 1,
+    // `CURLE_UNSUPPORTED_PROTOCOL`, and touch no socket.
+    let buffer = ptr.alloc(64)
+    let moved = ptr.alloc_word()
+    test.assert(libcurl.curl_easy_send(handle, buffer, 4, moved) == UNSUPPORTED_PROTOCOL)
+    test.assert(libcurl.curl_easy_recv(handle, buffer, 64, moved) == UNSUPPORTED_PROTOCOL)
+    ptr.free(moved)
+    ptr.free(buffer)
+    libcurl.curl_easy_cleanup(handle)

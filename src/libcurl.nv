@@ -1,0 +1,373 @@
+// The C entry points of libcurl, one novo-lang declaration each.
+//
+// A pointer is an `Int`: the C API hands out opaque handles for the
+// easy handle and the string list, and this module carries each of
+// them as the address the C library returned.  Zero is the null
+// pointer, which is how every allocating entry point below reports
+// failure.
+//
+// A `Str` argument is passed as a NUL-terminated C string.  Where a C
+// argument is a `char *` that is normally NULL, it is declared as an
+// `Int` instead, so 0 spells the null pointer.
+//
+// A `char *` return value is an address.  Read it with `ptr.read_str`.
+// An address libcurl owns is never freed by the caller; an address
+// `curl_easy_escape` or `curl_easy_unescape` allocated is released
+// with `curl_free`.
+//
+// A result code arrives as a C `int`, which the foreign function
+// interface does not sign-extend today.  Bind the answer to a local
+// and convert it with `as i32` before comparing it with a negative
+// number.
+//
+// `curl_easy_setopt` and `curl_easy_getinfo` are variadic in C: the
+// third argument's type is decided by the option or information
+// number.  A variadic call has no single novo-lang signature, so each
+// argument kind is declared separately below, and every declaration in
+// a family resolves to the same symbol.  The option and information
+// numbers are in the README.
+
+// Initialise the parts of libcurl that are not thread safe to
+// initialise later.
+//
+// `flags` is a bit set: 3, `CURL_GLOBAL_ALL`, is the usual argument,
+// and 0 initialises nothing beyond the minimum.  Answers 0,
+// `CURLE_OK`, on success.  libcurl 7.84 and later initialise
+// themselves on first use, so a program only calls this to choose the
+// flags or to fix the moment it happens.
+//
+// ```novo ignore
+// let rc = libcurl.curl_global_init(3)
+// ```
+pub @ffi(library = "curl", symbol = "curl_global_init")
+fn curl_global_init(flags: Int) -> Int [io, ffi]
+
+// Release what `curl_global_init` acquired.
+//
+// Every easy handle must be cleaned up first.  After this call no
+// other entry point in this package may be used until
+// `curl_global_init` runs again.
+//
+// ```novo ignore
+// libcurl.curl_global_cleanup()
+// ```
+pub @ffi(library = "curl", symbol = "curl_global_cleanup")
+fn curl_global_cleanup() [io, ffi]
+
+// Get the libcurl version and the versions of the libraries it uses.
+//
+// The answer is the address of a static string such as
+// `"libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3"`.  The library owns it.
+//
+// ```novo ignore
+// println(ptr.read_str(libcurl.curl_version()))
+// ```
+pub @ffi(library = "curl", symbol = "curl_version")
+fn curl_version() -> Int [ffi]
+
+// Release memory libcurl allocated for the caller.
+//
+// The addresses this frees are the ones `curl_easy_escape` and
+// `curl_easy_unescape` answered.  It is not for an address libcurl
+// still owns.
+//
+// ```novo ignore
+// libcurl.curl_free(escaped)
+// ```
+pub @ffi(library = "curl", symbol = "curl_free")
+fn curl_free(p: Int) [ffi]
+
+// Create an easy handle, the object that holds the settings for one
+// transfer and performs it.
+//
+// The handle starts with libcurl's default settings.  Answers 0 when
+// the allocation failed.  The first call also runs
+// `curl_global_init(3)` if it has not run.
+//
+// ```novo ignore
+// let handle = libcurl.curl_easy_init()
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_init")
+fn curl_easy_init() -> Int [io, ffi]
+
+// Release an easy handle.
+//
+// Every transfer on the handle must have finished.  The connections
+// the handle cached are closed unless it belongs to a share or a
+// multi handle.
+//
+// ```novo ignore
+// libcurl.curl_easy_cleanup(handle)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_cleanup")
+fn curl_easy_cleanup(handle: Int) [io, ffi]
+
+// Copy an easy handle with all its settings.
+//
+// The copy does not inherit the original's connections, its cookie
+// state or any data the caller set behind a pointer that has since
+// changed.  Answers 0 when the allocation failed.
+//
+// ```novo ignore
+// let second = libcurl.curl_easy_duphandle(handle)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_duphandle")
+fn curl_easy_duphandle(handle: Int) -> Int [io, ffi]
+
+// Return an easy handle to its default settings.
+//
+// The live connections, the session identifier cache, the cookies and
+// the shares survive; every option set through the setopt family is
+// forgotten.
+//
+// ```novo ignore
+// libcurl.curl_easy_reset(handle)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_reset")
+fn curl_easy_reset(handle: Int) [ffi]
+
+// Set an option whose value is a C `long`.
+//
+// `option` is an option number below 10000, such as 13,
+// `CURLOPT_TIMEOUT`, or 52, `CURLOPT_FOLLOWLOCATION`.  `value` is the
+// number.  Answers 0, `CURLE_OK`, on success and 48,
+// `CURLE_UNKNOWN_OPTION`, for an option this libcurl does not have.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_setopt_long(handle, 13, 30)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_setopt")
+fn curl_easy_setopt_long(handle: Int, option: Int, value: Int) -> Int [ffi]
+
+// Set an option whose value is a string.
+//
+// `option` is an option number between 10000 and 19999 that the
+// reference calls a `CURLOPTTYPE_STRINGPOINT`, such as 10002,
+// `CURLOPT_URL`.  libcurl copies the bytes before it returns, so the
+// novo-lang string need not outlive the call.  Answers 0 on success.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_setopt_str(handle, 10002, "https://example.com/")
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_setopt")
+fn curl_easy_setopt_str(handle: Int, option: Int, value: Str) -> Int [ffi]
+
+// Set an option whose value is a pointer.
+//
+// `option` is an option number between 10000 and 19999 that takes an
+// address rather than a string: a string list such as 10023,
+// `CURLOPT_HTTPHEADER`, a caller-owned buffer such as 10010,
+// `CURLOPT_ERRORBUFFER`, or a callback's user pointer.  `value` is the
+// address, and 0 clears the option.  Answers 0 on success.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_setopt_ptr(handle, 10023, headers)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_setopt")
+fn curl_easy_setopt_ptr(handle: Int, option: Int, value: Int) -> Int [ffi]
+
+// Set an option whose value is a `curl_off_t`, a 64-bit size.
+//
+// `option` is an option number at or above 30000, such as 30115,
+// `CURLOPT_POSTFIELDSIZE_LARGE`.  Passing a 64-bit value to an option
+// below 30000 is undefined, and so is passing a 32-bit one to an
+// option at or above it.  Answers 0 on success.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_setopt_off_t(handle, 30115, 4294967296)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_setopt")
+fn curl_easy_setopt_off_t(handle: Int, option: Int, value: Int) -> Int [ffi]
+
+// Perform the transfer the handle is configured for, and wait for it.
+//
+// Answers 0, `CURLE_OK`, when the transfer finished.  Answers a
+// non-zero code otherwise, which `curl_easy_strerror` names.  A
+// response carrying an HTTP error status is a success unless 45,
+// `CURLOPT_FAILONERROR`, is set: the status is read back with
+// `curl_easy_getinfo_long`.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_perform(handle)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_perform")
+fn curl_easy_perform(handle: Int) -> Int [io, ffi]
+
+// Send raw bytes over the connection an easy handle holds open.
+//
+// `buffer` is the address of `buflen` bytes, and the number actually
+// sent is written to the slot at `n`.  This is for a connection
+// established with 141, `CURLOPT_CONNECT_ONLY`.  Answers 0 on success
+// and 81, `CURLE_AGAIN`, when the socket is not ready.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_send(handle, buffer, 5, sent_slot)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_send")
+fn curl_easy_send(handle: Int, buffer: Int, buflen: Int, n: Int) -> Int [io, ffi]
+
+// Receive raw bytes over the connection an easy handle holds open.
+//
+// `buffer` is the address of `buflen` bytes of room, and the number
+// actually read is written to the slot at `n`.  Answers 0 on success
+// and 81, `CURLE_AGAIN`, when there is nothing to read yet.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_recv(handle, buffer, 4096, got_slot)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_recv")
+fn curl_easy_recv(handle: Int, buffer: Int, buflen: Int, n: Int) -> Int [io, ffi]
+
+// Do the upkeep an idle connection needs to stay usable.
+//
+// An HTTP/2 connection sends a ping.  A protocol with nothing to do
+// answers 0 and does nothing.  Answers 0 on success.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_upkeep(handle)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_upkeep")
+fn curl_easy_upkeep(handle: Int) -> Int [io, ffi]
+
+// Pause or resume a transfer.
+//
+// `bitmask` is 0 to resume, 1 to pause receiving, 2 to pause sending
+// and 4 to pause both.  Answers 0 on success.  Resuming may deliver
+// buffered data before it returns.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_pause(handle, 0)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_pause")
+fn curl_easy_pause(handle: Int, bitmask: Int) -> Int [io, ffi]
+
+// Read an item of information whose value is a C `long`.
+//
+// `info` is an information number between 2097152 and 3145727, such
+// as 2097154, `CURLINFO_RESPONSE_CODE`.  The number is written to the
+// slot at `out`, which the caller allocates.  Answers 0 on success and
+// 48, `CURLE_UNKNOWN_OPTION`, for an item this libcurl does not have.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_getinfo_long(handle, 2097154, slot)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_getinfo")
+fn curl_easy_getinfo_long(handle: Int, info: Int, out: Int) -> Int [ffi]
+
+// Read an item of information whose value is a string.
+//
+// `info` is an information number between 1048576 and 2097151, such
+// as 1048577, `CURLINFO_EFFECTIVE_URL`.  The address of a string
+// libcurl owns is written to the slot at `out`; the caller reads it
+// with `ptr.read_str` and does not free it.  It stays valid until the
+// next transfer on the handle.  Answers 0 on success.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_getinfo_str(handle, 1048577, slot)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_getinfo")
+fn curl_easy_getinfo_str(handle: Int, info: Int, out: Int) -> Int [ffi]
+
+// Read an item of information whose value is a `curl_off_t`.
+//
+// `info` is an information number at or above 6291456, such as
+// 6291506, `CURLINFO_TOTAL_TIME_T`, which answers microseconds.  The
+// 64-bit number is written to the slot at `out`.  Answers 0 on
+// success.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_getinfo_off_t(handle, 6291506, slot)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_getinfo")
+fn curl_easy_getinfo_off_t(handle: Int, info: Int, out: Int) -> Int [ffi]
+
+// Read an item of information whose value is a pointer.
+//
+// `info` is an information number between 4194304 and 5242879, such
+// as 4194332, `CURLINFO_COOKIELIST`, which answers the address of a
+// string list.  The address is written to the slot at `out`.  Whether
+// the caller releases it depends on the item, and the reference says
+// which.  Answers 0 on success.
+//
+// ```novo ignore
+// let rc = libcurl.curl_easy_getinfo_ptr(handle, 4194332, slot)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_getinfo")
+fn curl_easy_getinfo_ptr(handle: Int, info: Int, out: Int) -> Int [ffi]
+
+// Turn a result code into a description.
+//
+// `code` is a value one of the entry points above answered.  The
+// answer is the address of a static string such as
+// `"Couldn't resolve host name"`.  An unknown code answers
+// `"Unknown error"`.
+//
+// ```novo ignore
+// println(ptr.read_str(libcurl.curl_easy_strerror(6)))
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_strerror")
+fn curl_easy_strerror(code: Int) -> Int [ffi]
+
+// Add a string to a linked list, creating the list if there is none.
+//
+// `list` is the address of an existing list, or 0 to start one.  The
+// answer is the address of the list, which may be a different address
+// from the argument, or 0 when the allocation failed.  A caller that
+// overwrites its own variable with 0 has leaked the list.
+//
+// ```novo ignore
+// let headers = libcurl.curl_slist_append(0, "Accept: application/json")
+// ```
+pub @ffi(library = "curl", symbol = "curl_slist_append")
+fn curl_slist_append(list: Int, s: Str) -> Int [ffi]
+
+// Release a linked list and every string in it.
+//
+// The list must not be attached to a handle that is still using it.
+//
+// ```novo ignore
+// libcurl.curl_slist_free_all(headers)
+// ```
+pub @ffi(library = "curl", symbol = "curl_slist_free_all")
+fn curl_slist_free_all(list: Int) [ffi]
+
+// Percent-encode a string so it is safe in a URL.
+//
+// `handle` is an easy handle, or 0.  `length` is the number of bytes
+// to encode, and 0 means the string is NUL-terminated.  The answer is
+// the address of a string the caller releases with `curl_free`, or 0
+// when the allocation failed.
+//
+// ```novo ignore
+// let encoded = libcurl.curl_easy_escape(handle, "a b&c", 0)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_escape")
+fn curl_easy_escape(handle: Int, s: Str, length: Int) -> Int [ffi]
+
+// Decode the percent-encoded sequences in a string.
+//
+// `handle` is an easy handle, or 0.  `length` is the number of bytes
+// to decode, and 0 means the string is NUL-terminated.  The decoded
+// length is written to the slot at `outlength`, or that argument may
+// be 0.  The answer is the address of a string the caller releases
+// with `curl_free`.  The decoded bytes may contain a NUL, which is why
+// the length is reported separately.
+//
+// ```novo ignore
+// let plain = libcurl.curl_easy_unescape(handle, "a%20b", 0, len_slot)
+// ```
+pub @ffi(library = "curl", symbol = "curl_easy_unescape")
+fn curl_easy_unescape(handle: Int, s: Str, length: Int, outlength: Int) -> Int [ffi]
+
+// Parse a date string into seconds since the Unix epoch.
+//
+// The accepted forms are the ones the reference lists, beginning with
+// the HTTP date of RFC 7231 section 7.1.1.1.  `now` is unused and is
+// passed as 0.  Answers -1 when the string is not a date it
+// recognises.
+//
+// ```novo ignore
+// let t = libcurl.curl_getdate("Sun, 06 Nov 1994 08:49:37 GMT", 0)
+// ```
+pub @ffi(library = "curl", symbol = "curl_getdate")
+fn curl_getdate(datestring: Str, now: Int) -> Int [ffi]

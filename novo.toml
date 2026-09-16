@@ -1,0 +1,42 @@
+[package]
+name        = "libcurl-sys"
+version     = "0.1.0"
+description = "Bindings over libcurl, the client-side URL transfer library: the global setup, the easy handle, the typed option and information calls, the transfer itself, the header list and the URL escaping, one declaration per C entry point."
+license     = "Apache-2.0"
+
+# NOT a `0.0.x` draft.  An interface release is the shape whose every
+# `pub fn` body is a `todo()`, and every `pub fn` here is an `@ffi`
+# declaration with no body at all — `novo pkg publish` reads that as a
+# release with bodies and refuses a `0.0.x` version for it.
+stability   = "experimental"
+
+# `sys`: the layer for a package that binds one C library and decides
+# nothing of its own.  Every `pub fn` below is an `@ffi` declaration of
+# a function in libcurl.
+layer       = "sys"
+
+category    = "bindings"
+
+# The one C library.  `libcurl.so` is what the loader resolves these
+# symbols against; installing this package does not install it.
+wraps       = "libcurl"
+
+tags        = ["ffi", "curl", "http", "url", "transfer", "bindings"]
+repository  = "https://github.com/novolang/libcurl-sys"
+maintainers = ["novo-lang"]
+novo        = ">= 0.8.9"
+
+[docs.pages]
+"README.md" = "The C entry points of libcurl, one novo-lang declaration each"
+
+[dependencies]
+# None.  A binding over one C library depends on no novo-lang package.
+
+# The link flag for the `library = "curl"` name every declaration in
+# `src/` carries.  `libcurl4-openssl-dev` installs
+# `/usr/lib/<arch>/pkgconfig/libcurl.pc`, so pkg-config answers `-lcurl`
+# on Debian and Ubuntu.  Without the block the default is `-lcurl`,
+# which is the same flag on a system that put the library somewhere the
+# linker already looks.
+[ffi.curl]
+pkg_config = "libcurl"
