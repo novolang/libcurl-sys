@@ -9,6 +9,25 @@ with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
 The documentation and comments in plain prose; no declaration changed.
 
+### Corrected against the libcurl reference
+
+- `CURLOPT_POSTFIELDSIZE_LARGE` is 30120. 30115 is
+  `CURLOPT_INFILESIZE_LARGE`.
+- `curl_easy_pause` takes 0 `CURLPAUSE_CONT`, 1 `CURLPAUSE_RECV`, 4
+  `CURLPAUSE_SEND` and 5 `CURLPAUSE_ALL`.
+- The options that take a `curl_off_t` run from 30000 to 39999.
+  `CURLOPTTYPE_BLOB` begins at 40000.
+- A string from `curl_easy_getinfo` is valid until
+  `curl_easy_cleanup` releases the handle. A further transfer may
+  replace what it points at.
+- `curl_easy_init` is what initialises the library implicitly.
+  libcurl 7.84 made `curl_global_init` thread-safe where
+  `curl_version_info` reports `CURL_VERSION_THREADSAFE`.
+- `curl_easy_reset` keeps the name resolution cache as well as the
+  other state named there.
+- The suite's constant for `CURLOPT_POSTFIELDSIZE_LARGE` held 30115,
+  so it named one option and exercised another. It now holds 30120.
+
 ## 0.1.0 — 2026-09-15
 
 The first release: twenty-seven entry points of the libcurl C API, one
