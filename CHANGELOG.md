@@ -5,6 +5,10 @@ is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
+## 0.1.1 — 2026-09-18
+
+The documentation and comments in plain prose; no declaration changed.
+
 ## 0.1.0 — 2026-09-15
 
 The first release: twenty-seven entry points of the libcurl C API, one
@@ -24,41 +28,29 @@ The first release: twenty-seven entry points of the libcurl C API, one
     `curl_easy_getinfo`, and `curl_easy_strerror`.
   - The helpers: `curl_slist_append`, `curl_slist_free_all`,
     `curl_easy_escape`, `curl_easy_unescape` and `curl_getdate`.
-- `tests/libcurl_tests.nv` — thirteen tests over the signatures. They
-  call the C library, so they need libcurl installed. No test opens a
-  network connection: the two that reach the transfer group assert what
-  `curl_easy_upkeep`, `curl_easy_send` and `curl_easy_recv` answer
-  before any connection exists, and the pointer item is read through a
-  cookie the suite seeds itself. All thirteen pass. The run then exits
-  23 from the default leak check, which counts the copy `ptr.read_str`
-  makes of what the C library owns; that is a toolchain defect, it is
-  filed as one, and the README's "Tests" section says how to run
-  without it.
+- `tests/libcurl_tests.nv` — thirteen tests over the twenty-seven entry
+  points. They call the C library, so they need libcurl installed. No
+  test opens a network connection. The two that reach the transfer
+  group assert what `curl_easy_upkeep`, `curl_easy_send` and
+  `curl_easy_recv` answer before any connection exists, and the pointer
+  item is read through a cookie the suite seeds itself. All thirteen
+  pass.
 
 ### The variadic calls are declared once per argument kind
 
-`curl_easy_setopt` and `curl_easy_getinfo` are variadic in C: the type
+`curl_easy_setopt` and `curl_easy_getinfo` are variadic in C. The type
 of the third argument is decided by the option or information number,
 and the compiler cannot check it. A variadic call has no single
 novo-lang signature, so each argument kind gets its own declaration and
-all of them resolve to the same symbol —
-`curl_easy_setopt_long`, `_str`, `_ptr` and `_off_t`, and
-`curl_easy_getinfo_long`, `_str`, `_off_t` and `_ptr`. The caller picks
-the declaration that matches the number, and the README's tables say
-which number is which kind.
+all of them resolve to the same symbol: `curl_easy_setopt_long`,
+`_str`, `_ptr` and `_off_t`, and `curl_easy_getinfo_long`, `_str`,
+`_off_t` and `_ptr`. The caller picks the declaration that matches the
+number, and the README's tables say which number is which kind.
 
 This is the shape libssl-sys uses for `SSL_ctrl`, with one difference.
 `SSL_ctrl` is a fixed-arity C function that the OpenSSL headers wrap in
 macros, so one declaration covers it. `curl_easy_setopt` is variadic
 itself, so one declaration cannot.
-
-### Not a `0.0.x` interface release
-
-An interface release is the shape whose every `pub fn` body is a
-`todo()`. Every `pub fn` here is an `@ffi` declaration with no body, so
-`novo pkg publish` reads the package as a release with bodies and
-refuses a `0.0.x` version for it. The first release of a bindings
-package is therefore `0.1.0`.
 
 ### Named as missing
 

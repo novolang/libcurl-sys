@@ -1,6 +1,6 @@
 // The C entry points of libcurl, one novo-lang declaration each.
 //
-// A pointer is an `Int`: the C API hands out opaque handles for the
+// A pointer is an `Int`.  The C API hands out opaque handles for the
 // easy handle and the string list, and this module carries each of
 // them as the address the C library returned.  Zero is the null
 // pointer, which is how every allocating entry point below reports
@@ -11,7 +11,7 @@
 // `Int` instead, so 0 spells the null pointer.
 //
 // A `char *` return value is an address.  Read it with `ptr.read_str`.
-// An address libcurl owns is never freed by the caller; an address
+// An address libcurl owns is never freed by the caller.  An address
 // `curl_easy_escape` or `curl_easy_unescape` allocated is released
 // with `curl_free`.
 //
@@ -20,8 +20,8 @@
 // and convert it with `as i32` before comparing it with a negative
 // number.
 //
-// `curl_easy_setopt` and `curl_easy_getinfo` are variadic in C: the
-// third argument's type is decided by the option or information
+// `curl_easy_setopt` and `curl_easy_getinfo` are variadic in C.  The
+// type of the third argument is decided by the option or information
 // number.  A variadic call has no single novo-lang signature, so each
 // argument kind is declared separately below, and every declaration in
 // a family resolves to the same symbol.  The option and information
@@ -30,11 +30,13 @@
 // Initialise the parts of libcurl that are not thread safe to
 // initialise later.
 //
-// `flags` is a bit set: 3, `CURL_GLOBAL_ALL`, is the usual argument,
-// and 0 initialises nothing beyond the minimum.  Answers 0,
-// `CURLE_OK`, on success.  libcurl 7.84 and later initialise
-// themselves on first use, so a program only calls this to choose the
-// flags or to fix the moment it happens.
+// `flags` is a bit set.  3, `CURL_GLOBAL_ALL`, is the usual argument,
+// and 0, `CURL_GLOBAL_NOTHING`, initialises nothing beyond the
+// minimum.  Answers 0, `CURLE_OK`, on success.  `curl_easy_init` makes
+// this call itself when it has not already run, so a program calls it
+// to choose the flags or to fix the moment it happens.  libcurl 7.84
+// and later make the call thread safe where `curl_version_info`
+// reports `CURL_VERSION_THREADSAFE`.
 //
 // ```novo ignore
 // let rc = libcurl.curl_global_init(3)
@@ -116,9 +118,9 @@ fn curl_easy_duphandle(handle: Int) -> Int [io, ffi]
 
 // Return an easy handle to its default settings.
 //
-// The live connections, the session identifier cache, the cookies and
-// the shares survive; every option set through the setopt family is
-// forgotten.
+// The live connections, the session identifier cache, the name
+// resolution cache, the cookies and the shares survive.  Every option
+// set through the setopt family is forgotten.
 //
 // ```novo ignore
 // libcurl.curl_easy_reset(handle)
@@ -168,13 +170,13 @@ fn curl_easy_setopt_ptr(handle: Int, option: Int, value: Int) -> Int [ffi]
 
 // Set an option whose value is a `curl_off_t`, a 64-bit size.
 //
-// `option` is an option number at or above 30000, such as 30115,
+// `option` is an option number between 30000 and 39999, such as 30120,
 // `CURLOPT_POSTFIELDSIZE_LARGE`.  Passing a 64-bit value to an option
 // below 30000 is undefined, and so is passing a 32-bit one to an
-// option at or above it.  Answers 0 on success.
+// option in this range.  Answers 0 on success.
 //
 // ```novo ignore
-// let rc = libcurl.curl_easy_setopt_off_t(handle, 30115, 4294967296)
+// let rc = libcurl.curl_easy_setopt_off_t(handle, 30120, 4294967296)
 // ```
 pub @ffi(library = "curl", symbol = "curl_easy_setopt")
 fn curl_easy_setopt_off_t(handle: Int, option: Int, value: Int) -> Int [ffi]
@@ -231,9 +233,10 @@ fn curl_easy_upkeep(handle: Int) -> Int [io, ffi]
 
 // Pause or resume a transfer.
 //
-// `bitmask` is 0 to resume, 1 to pause receiving, 2 to pause sending
-// and 4 to pause both.  Answers 0 on success.  Resuming may deliver
-// buffered data before it returns.
+// `bitmask` is 0, `CURLPAUSE_CONT`, to resume.  1, `CURLPAUSE_RECV`,
+// pauses receiving.  4, `CURLPAUSE_SEND`, pauses sending.  5,
+// `CURLPAUSE_ALL`, is the two together.  Answers 0 on success.
+// Resuming may deliver buffered data before it returns.
 //
 // ```novo ignore
 // let rc = libcurl.curl_easy_pause(handle, 0)
@@ -258,9 +261,11 @@ fn curl_easy_getinfo_long(handle: Int, info: Int, out: Int) -> Int [ffi]
 //
 // `info` is an information number between 1048576 and 2097151, such
 // as 1048577, `CURLINFO_EFFECTIVE_URL`.  The address of a string
-// libcurl owns is written to the slot at `out`; the caller reads it
-// with `ptr.read_str` and does not free it.  It stays valid until the
-// next transfer on the handle.  Answers 0 on success.
+// libcurl owns is written to the slot at `out`.  The caller reads it
+// with `ptr.read_str` and does not free it.  The address stays valid
+// until `curl_easy_cleanup` releases the handle, and a further
+// transfer on the handle may replace what it points at.  Answers 0 on
+// success.
 //
 // ```novo ignore
 // let rc = libcurl.curl_easy_getinfo_str(handle, 1048577, slot)
@@ -350,8 +355,8 @@ fn curl_easy_escape(handle: Int, s: Str, length: Int) -> Int [ffi]
 // to decode, and 0 means the string is NUL-terminated.  The decoded
 // length is written to the slot at `outlength`, or that argument may
 // be 0.  The answer is the address of a string the caller releases
-// with `curl_free`.  The decoded bytes may contain a NUL, which is why
-// the length is reported separately.
+// with `curl_free`.  The decoded bytes may contain a NUL, so the
+// length is reported separately.
 //
 // ```novo ignore
 // let plain = libcurl.curl_easy_unescape(handle, "a%20b", 0, len_slot)

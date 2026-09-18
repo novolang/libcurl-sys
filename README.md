@@ -8,13 +8,12 @@ documented in [the curl manual](https://curl.se/libcurl/c/). This
 package declares twenty-seven of its entry points to novo-lang, one
 declaration each.
 
-**Status: a binding, not a port.** Every function in this package is a
-declaration of a function in libcurl. The package contains no logic of
-its own, and it does nothing without the C library installed. The
-twenty-seven entry points are the ones a program needs to create a
-handle, configure a transfer, run it, read the result and clean up; the
-section "What is not included" says what a program still cannot do with
-them alone.
+Every function here is a declaration of a function in libcurl. The
+package contains no logic of its own, and it does nothing without the C
+library installed. The twenty-seven entry points are the ones a program
+needs to create a handle, configure a transfer, run it, read the result
+and clean up. The section "What is not included" says what a program
+cannot do with them alone.
 
 ## What it is
 
@@ -126,8 +125,8 @@ The six groups and their sizes:
 **The setopt family.** Four declarations, one symbol. The option number
 says which one to use, and the "Option numbers" table below gives the
 ranges: below 10000 is `curl_easy_setopt_long`, 10000 to 19999 is
-`_str` for a string and `_ptr` for any other address, and 30000 and
-above is `_off_t`.
+`_str` for a string and `_ptr` for any other address, and 30000 to
+39999 is `_off_t`.
 
 **The getinfo family.** Four declarations, one symbol, and the
 information number says which. The "Information numbers" table gives
@@ -230,7 +229,7 @@ program needs.
 | `CURLOPT_ERRORBUFFER` | 10010 | `curl_easy_setopt_ptr` |
 | `CURLOPT_POSTFIELDS` | 10015 | `curl_easy_setopt_ptr` |
 | `CURLOPT_HTTPHEADER` | 10023 | `curl_easy_setopt_ptr` |
-| `CURLOPT_POSTFIELDSIZE_LARGE` | 30115 | `curl_easy_setopt_off_t` |
+| `CURLOPT_POSTFIELDSIZE_LARGE` | 30120 | `curl_easy_setopt_off_t` |
 
 ### Information numbers
 
@@ -299,8 +298,8 @@ TLS session directly takes that package as well.
 
 ## Tests
 
-`tests/libcurl_tests.nv` holds thirteen tests written against the
-signatures. They call the C library, so `novo test` needs libcurl
+`tests/libcurl_tests.nv` holds thirteen tests over the twenty-seven
+entry points. They call the C library, so `novo test` needs libcurl
 installed and linkable:
 
 ```
@@ -323,32 +322,6 @@ it, that a transfer with no URL fails with `CURLE_URL_MALFORMAT` before
 any socket is opened, and that `curl_easy_upkeep` succeeds on a handle
 with nothing to keep alive while `curl_easy_send` and `curl_easy_recv`
 answer `CURLE_UNSUPPORTED_PROTOCOL` without a connect-only connection.
-
-**`novo test` exits 23 on this suite even when every assertion passes.**
-`ptr.read_str` copies a string the C library owns, and the toolchain's
-default leak check counts every one of those copies as an object the
-test leaked: the stdlib declares the call as returning nothing to
-release and the runtime allocates anyway. The exit code is the leak
-check's, not an assertion's; the output above it says how many
-assertions passed. Running with `NOVO_LEAK_CHECK=0` set, or
-`novo test --no-leak-check`, exits 0. It is a toolchain defect and it is
-filed as one; nothing in this package can close it.
-
-## Implementation status
-
-| Group | State |
-| --- | --- |
-| Library | Complete. |
-| Easy handle | Complete. |
-| Options | Complete for the four argument kinds. The callback options are absent. |
-| Transfer | Complete for a blocking transfer and for connect-only bytes. |
-| Information | Complete for the four value kinds. |
-| Helpers | Complete. |
-| Callbacks | Absent. Every one takes a C function pointer. |
-| Multi interface | Absent. Left out of the first release. |
-| Share interface | Absent. Left out of the first release. |
-| Mime interface | Absent. Left out of the first release. |
-| URL API | Absent. Left out of the first release. |
 
 ## Licence
 

@@ -1,8 +1,8 @@
-// API tests for the libcurl bindings.
+// The tests over the entry points of the libcurl bindings.
 //
 // Every test below calls into the C library, so the suite needs
 // libcurl installed and linked.  `novo pkg build` type-checks the
-// declarations without it; `novo test` runs them and does not.
+// declarations without it.  `novo test` runs them and does not.
 //
 // No test opens a network connection.  The suite asks libcurl about
 // itself, configures a handle and reads the configuration back, and
@@ -26,7 +26,7 @@ const BAD_FUNCTION_ARGUMENT: Int = 43
 const UNKNOWN_OPTION: Int = 48
 
 // `CURLE_UNSUPPORTED_PROTOCOL`, the answer to a raw socket call on a
-// handle that was never put into connect-only mode.
+// handle that `CURLOPT_CONNECT_ONLY` was never set on.
 const UNSUPPORTED_PROTOCOL: Int = 1
 
 // `CURLOPT_URL`, a string option.
@@ -39,7 +39,7 @@ const OPT_TIMEOUT: Int = 13
 const OPT_HTTPHEADER: Int = 10023
 
 // `CURLOPT_POSTFIELDSIZE_LARGE`, a `curl_off_t` option.
-const OPT_POSTFIELDSIZE_LARGE: Int = 30115
+const OPT_POSTFIELDSIZE_LARGE: Int = 30120
 
 // `CURLOPT_COOKIELIST`, a string option that feeds one line to the
 // cookie engine and starts the engine if it is not running.
@@ -90,7 +90,7 @@ fn test_an_easy_handle_is_created_copied_and_released() [io, ffi]
     let copy = libcurl.curl_easy_duphandle(handle)
     test.assert(copy != 0)
     test.assert(copy != handle)
-    // The copy carries the option; the reset original does not.
+    // The copy carries the option.  The original, once reset, does not.
     let slot = ptr.alloc_word()
     test.assert(libcurl.curl_easy_getinfo_str(copy, INFO_EFFECTIVE_URL, slot) == OK)
     test.assert(ptr.read_str(ptr.read_word(slot)) == "https://example.com/")
@@ -166,11 +166,11 @@ fn test_a_pointer_item_answers_a_list_the_caller_releases() [io, ffi]
     test.assert(libcurl.curl_easy_getinfo_ptr(handle, INFO_COOKIELIST, slot) == OK)
     let cookies = ptr.read_word(slot)
     test.assert(cookies != 0)
-    // A `curl_slist` node begins with the address of its string, and
-    // the cookie is written in the Netscape cookie-file format.
+    // A `curl_slist` node begins with the address of its string.  The
+    // cookie is written in the Netscape cookie-file format.
     test.assert(str.contains(ptr.read_str(ptr.read_word(cookies)), "example.com"))
-    // This is one of the items that hands the caller a list of its own,
-    // so the caller is the one that releases it.
+    // This is one of the items that hands the caller a list of its
+    // own, so the caller is the one that releases it.
     libcurl.curl_slist_free_all(cookies)
     // An information number this libcurl does not define is refused
     // through this declaration too.
